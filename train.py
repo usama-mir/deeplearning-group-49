@@ -40,19 +40,16 @@ Training the Segmentation Model
 # Training loop
 num_epochs = args.num_epochs
 validation_every_steps = (len(train) // (10 * args.batch_size))
-step = 0
-cur_loss = 0
 
+global_step = 0
 model.train()
-
 train_dice_scores, valid_dice_score = [], []
-
-max_valid_dice_score, best_model = None, None
+max_valid_dice_score, new_model = None, None
 
 for epoch in tqdm(range(num_epochs)):
 
     train_dice_scores_batches = []
-    cur_loss = 0
+    epoch_loss = 0
     model.train()
     for rgb_img, mask_img in train_loader:
         rgb_img, mask_img = rgb_img.to(DEVICE), mask_img.to(DEVICE)
@@ -69,10 +66,10 @@ for epoch in tqdm(range(num_epochs)):
         batch_loss.backward()
         optimizer.step()
 
-        cur_loss += batch_loss
+        epoch_loss += batch_loss
 
         # Increment step counter
-        step += 1
+        global_step += 1
 
         # Compute DICE score.
         predictions = output.flatten(start_dim=2, end_dim=len(output.size()) - 1).softmax(1)
@@ -83,7 +80,7 @@ for epoch in tqdm(range(num_epochs)):
             )
         )
 
-        if step % validation_every_steps == 0:
+        if global_step % validation_every_steps == 0:
 
             # Append average training DICE score to list.
             train_dice_scores.append(np.mean(train_dice_scores_batches))
@@ -117,16 +114,16 @@ for epoch in tqdm(range(num_epochs)):
                     # Keep the best model
                     if (max_valid_dice_score == None) or (valid_dice_scores_batches[-1] > max_valid_dice_score):
                         max_valid_dice_score = valid_dice_scores_batches[-1]
-                        best_model = model.state_dict()
+                        new_model = model.state_dict()
 
                 model.train()
 
             # Append average validation DICE score to list.
             valid_dice_score.append(np.sum(valid_dice_scores_batches) / len(valid))
 
-            print(f"Step {step:<5}   training DICE score: {train_dice_scores[-1]}")
+            print(f"Step {global_step:<5}   training DICE score: {train_dice_scores[-1]}")
             print(f"             test DICE score: {valid_dice_score[-1]}")
 
 print("Finished training.")
 # Save model
-model.load_state_dict(best_model)
+model.load_state_dict(new_model)
