@@ -10,8 +10,8 @@ import numpy as np
 from data import loaders
 from utils.dice_score import dice_score
 from utils.args import get_args
-
-
+import time
+import matplotlib.pyplot as plt
 args = get_args()
 train, valid, train_loader, valid_loader = loaders(args.directory_path, args.train_ratio, args.valid_ratio,
                                                    args.seed_random, args.batch_size, args.shuffle, args.drop_last)
@@ -34,6 +34,15 @@ optimizer = Adam(
     weight_decay=args.weight_decay
 )
 
+
+def epoch_time(start_time, end_time):
+    elapsed_time = end_time - start_time
+    elapsed_mins = int(elapsed_time / 60)
+    elapsed_secs = int(elapsed_time - (elapsed_mins * 60))
+    return elapsed_mins, elapsed_secs
+
+
+
 '''
 Training the Segmentation Model
 '''
@@ -43,36 +52,37 @@ validation_every_steps = (len(train) // (10 * args.batch_size))
 
 global_step = 0
 model.train()
-train_dice_scores, valid_dice_score = [], []
+train_dice_scores, valid_dice_scores = [], []
 max_valid_dice_score, new_model = None, None
 
 for epoch in tqdm(range(num_epochs)):
-
+    start_time = time.time()
     train_dice_scores_batches = []
-    epoch_loss = 0
+
+
+    ''' Train '''
+    epoch_loss_train = 0
+
     model.train()
     for rgb_img, mask_img in train_loader:
         rgb_img, mask_img = rgb_img.to(DEVICE), mask_img.to(DEVICE)
 
-        # Forward pass, compute gradients, perform one training step.
         optimizer.zero_grad()
 
-        output = model(rgb_img)
+        y_pred_train = model(rgb_img)
 
-        batch_loss = criterion(
-            output.flatten(start_dim=2, end_dim=len(output.size()) - 1),
+        loss_train = criterion(
+            y_pred_train.flatten(start_dim=2, end_dim=len(y_pred_train.size()) - 1),
             mask_img.flatten(start_dim=1, end_dim=len(mask_img.size()) - 1).type(torch.long)
         )
-        batch_loss.backward()
+        loss_train.backward()
         optimizer.step()
 
-        epoch_loss += batch_loss
+        epoch_loss_train += loss_train
 
-        # Increment step counter
-        global_step += 1
 
-        # Compute DICE score.
-        predictions = output.flatten(start_dim=2, end_dim=len(output.size()) - 1).softmax(1)
+        # Train DICE score
+        predictions = y_pred_train.flatten(start_dim=2, end_dim=len(y_pred_train.size()) - 1).softmax(1)
         train_dice_scores_batches.append(
             dice_score(
                 predictions,
@@ -80,30 +90,34 @@ for epoch in tqdm(range(num_epochs)):
             )
         )
 
+
+        # Increment step counter
+        global_step += 1
+
+
         if global_step % validation_every_steps == 0:
 
-            # Append average training DICE score to list.
+            # Average training DICE score
             train_dice_scores.append(np.mean(train_dice_scores_batches))
-
             train_dice_scores_batches = []
 
-            # Compute DICE scores on validation set.
+            '''Evaluate '''
             valid_dice_scores_batches = []
-            valid_loss = 0
+            epoch_loss_valid = 0
             with torch.no_grad():
                 model.eval()
                 for rgb_img, mask_img in valid_loader:
                     rgb_img, mask_img = rgb_img.to(DEVICE), mask_img.to(DEVICE)
-                    output = model(rgb_img)
+                    y_pred_valid = model(rgb_img)
                     loss = criterion(
-                        output.flatten(start_dim=2, end_dim=len(output.size()) - 1),
+                        y_pred_valid.flatten(start_dim=2, end_dim=len(y_pred_valid.size()) - 1),
                         mask_img.flatten(start_dim=1, end_dim=len(mask_img.size()) - 1).type(torch.long)
                     )
-                    valid_loss += loss
+                    epoch_loss_valid += loss
 
-                    predictions = output.flatten(start_dim=2, end_dim=len(output.size()) - 1).softmax(1)
 
-                    # Multiply by len(x) because the final batch of DataLoader may be smaller (drop_last=False).
+
+                    predictions = y_pred_valid.flatten(start_dim=2, end_dim=len(y_pred_valid.size()) - 1).softmax(1)
                     valid_dice_scores_batches.append(
                         dice_score(
                             predictions,
@@ -111,19 +125,47 @@ for epoch in tqdm(range(num_epochs)):
                         ) * len(rgb_img)
                     )
 
-                    # Keep the best model
-                    if (max_valid_dice_score == None) or (valid_dice_scores_batches[-1] > max_valid_dice_score):
-                        max_valid_dice_score = valid_dice_scores_batches[-1]
-                        new_model = model.state_dict()
+                valid_loss = epoch_loss_valid / len(valid_loader)
 
-                model.train()
+            # Train Loss
+            train_loss = epoch_loss_train / len(train_loader)
+
+
+
+            # Keep the best model
+            if (max_valid_dice_score == None) or (valid_dice_scores_batches[-1] > max_valid_dice_score):
+                max_valid_dice_score = valid_dice_scores_batches[-1]
+                new_model = model.state_dict()
+
 
             # Append average validation DICE score to list.
-            valid_dice_score.append(np.sum(valid_dice_scores_batches) / len(valid))
+            valid_dice_scores.append(np.sum(valid_dice_scores_batches) / len(valid))
 
-            print(f"Step {global_step:<5}   training DICE score: {train_dice_scores[-1]}")
-            print(f"             test DICE score: {valid_dice_score[-1]}")
+
+
+            end_time = time.time()
+            epoch_mins, epoch_secs = epoch_time(start_time, end_time)
+
+            data_str = f'Epoch: {epoch+1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s| Step {global_step:<5} \n '
+            data_str += f'\tTrain Loss: {train_loss:.3f}\n'
+            data_str += f'\t Val. Loss: {valid_loss:.3f}\n'
+            data_str += f"training DICE score: {train_dice_scores[-1]}\n"
+            data_str += f"test DICE score: {valid_dice_scores[-1]}\n"
+            print(data_str)
 
 print("Finished training.")
 # Save model
-model.load_state_dict(new_model)
+#model.load_state_dict(new_model)
+# Plot and label the training and validation loss values
+plt.plot(list(range(global_step)), train_dice_scores, label='Training Loss')
+plt.plot(list(range(global_step)), valid_dice_scores, label='Validation Loss')
+
+# Add in a title and axes labels
+plt.title('Training and Validation Loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+
+
+# Display the plot
+plt.legend(loc='best')
+plt.show()
