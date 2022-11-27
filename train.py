@@ -155,10 +155,13 @@ for epoch in tqdm(range(num_epochs)):
 
 print("Finished training.")
 # Save model
-#model.load_state_dict(new_model)
+model.load_state_dict(new_model)
 # Plot and label the training and validation loss values
-plt.plot(list(range(global_step)), train_dice_scores, label='Training Loss')
-plt.plot(list(range(global_step)), valid_dice_scores, label='Validation Loss')
+plt.plot(list(range(global_step)), train_dice_scores, label='Training Dice Loss')
+plt.plot(list(range(global_step)), valid_dice_scores, label='Validation Dice Loss')
+plt.plot(list(range(global_step)), train_loss, label='Training Loss')
+plt.plot(list(range(global_step)), valid_loss, label='Training Loss')
+
 
 # Add in a title and axes labels
 plt.title('Training and Validation Loss')
