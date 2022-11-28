@@ -1,32 +1,15 @@
 import numpy as np
-from pathlib import Path
-from glob import glob
 import matplotlib.pyplot as plt
-import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 
-from torchvision.transforms import *
 import torch
-import torchvision
-import torchvision.transforms as T
-from PIL import Image
 
-from torchvision.transforms import ToTensor
-import logging
-import torch.optim as optim
-from tqdm import tqdm
-from torchmetrics.functional import dice as pt_dice_score
-import random
-from PIL.ImageFilter import GaussianBlur
-import math
-from numpy import load
 import segmentation_models_pytorch as smp
 
-import segmentation_models_pytorch.utils.losses as smpLoss
-
 # We load utils from the root of our project:
-from data.car_dataset import CarDataset
-
+from car_dataset import CarDataset
+from args import get_args
+args = get_args()
 
 # We define the model:
 model = smp.Unet(
@@ -37,8 +20,8 @@ model = smp.Unet(
     in_channels=3
 )
 
-train_log = np.load(r'C:/Users/tala1/Skrivebord/deeplearning/deeplearning-final-project/models/train_log.npy')
-valid_log = np.load(r'C:/Users/tala1/Skrivebord/deeplearning/deeplearning-final-project/models/valid_log.npy')
+train_log = np.load(args.train_log) #np.load(r'C:/Users/tala1/Skrivebord/deeplearning/deeplearning-final-project/models/train_log.npy')
+valid_log = np.load(args.valid_log) #np.load(r'C:/Users/tala1/Skrivebord/deeplearning/deeplearning-final-project/models/valid_log.npy')
 
 
 from torchmetrics.functional import dice_score, accuracy
@@ -73,8 +56,8 @@ def calc_test_metrics(model, test_dataloader):
 
     return np.mean(dice_scores_macro), np.mean(accuracy_macro)
 
-models_base_path = r'C:/Users/tala1/Skrivebord/deeplearning/deeplearning-final-project/models'
-test_path =r"C:/Users/tala1/Skrivebord/deeplearning/deeplearning-final-project/splitted_data/test/"
+models_base_path = args.models_base_path # r'C:/Users/tala1/Skrivebord/deeplearning/deeplearning-final-project/models'
+test_path = args.test_path # r"C:/Users/tala1/Skrivebord/deeplearning/deeplearning-final-project/splitted_data/test/"
 test_dataset = CarDataset(test_path, test=True)
 test_dataloader = DataLoader(test_dataset, shuffle=False)
 
