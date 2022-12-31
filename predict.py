@@ -12,7 +12,7 @@ from args import get_args
 args = get_args()
 
 # We define the model:
-model = smp.Unet(
+model = smp.UnetPlusPlus(
     encoder_name='timm-resnest200e',  # We use the ResNeSt 200 backbone
     encoder_weights='imagenet',  # The backbone is trained on imagenet
     classes=9,  # We have 9 classes
